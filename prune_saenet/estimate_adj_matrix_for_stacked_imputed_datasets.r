@@ -29,6 +29,7 @@ causal_order <- NULL
 weights <- NULL
 ad_weight_type <- NULL
 prior_knowledge <- NULL
+is_discrete <- NULL
 
 # X_list
 path <- file.path(temp_dir, "X_names.csv")
@@ -54,6 +55,13 @@ weights <- as.vector(weights)[[1]]
 path <- file.path(temp_dir, "prior_knowledge.csv")
 if (file.exists(path))
     prior_knowledge <- read.csv(path, sep=',', header=FALSE)
+
+# is_discrete
+path <- file.path(temp_dir, "is_discrete.csv")
+if (file.exists(path)) {
+    is_discrete <- read.csv(path, sep=",", header=FALSE)
+    is_discrete <- as.vector(is_discrete)
+}
 
 # params
 n_imputation <- length(X_list)
@@ -81,6 +89,10 @@ for (i in 2:dim(causal_order)[1]) {
     
     if (length(predictors) == 0) next
 
+    family <- "gaussian"
+    if (!is.null(is_discrete) && is_discrete[[target]])
+        family <- "binomial"
+
     # make dataset
     x <- lapply(X_list, function(x_) { as.matrix(x_[, predictors]) })
     y <- lapply(X_list, function(x_) { as.vector(x_[, target]) })
@@ -91,8 +103,8 @@ for (i in 2:dim(causal_order)[1]) {
     # run to search adaptive weights
     adWeight_cv <- rep(1, length(predictors))
     
-    fit <- saenet(x, y, pf, adWeight_cv, weights)
-    CV <- cv.saenet(x, y, pf, adWeight_cv, weights, lambda=fit$lambda)
+    fit <- saenet(x, y, pf, adWeight_cv, weights, family=family)
+    CV <- cv.saenet(x, y, pf, adWeight_cv, weights, lambda=fit$lambda, family=family)
     coef_cv <- fit$coef[, 1, ]
 
     lambda_list_cv <- fit$lambda
@@ -104,9 +116,9 @@ for (i in 2:dim(causal_order)[1]) {
     }
     lambda_cv <- CV[[key]]
     
-    for (i in 1:length(lambda_list_cv)) {
-        if (abs(lambda_list_cv[[i]] / lambda_cv - 1.0) < 1.0e-6)
-            n_lambda_cv = i
+    for (j in 1:length(lambda_list_cv)) {
+        if (abs(lambda_list_cv[[j]] / lambda_cv - 1.0) < 1.0e-6)
+            n_lambda_cv = j
     }
     
     # run to search beta
@@ -116,14 +128,14 @@ for (i in 2:dim(causal_order)[1]) {
     gamma <- ceiling(2 * nu / (1 - nu) + 1)
     adWeight_cv <- abs_beta_hat_cv ** (-gamma)
     
-    fit <- saenet(x, y, pf, adWeight_cv, weights)
-    CV <- cv.saenet(x, y, pf, adWeight_cv, weights, lambda=fit$lambda)
+    fit <- saenet(x, y, pf, adWeight_cv, weights, family=family)
+    CV <- cv.saenet(x, y, pf, adWeight_cv, weights, lambda=fit$lambda, family=family)
     
     lambda_list_cv <- fit$lambda
     lambda_cv <- CV[[key]]
-    for (i in 1:length(lambda_list_cv)) {
-        if (abs(lambda_list_cv[[i]] / lambda_cv - 1.0) < 1.0e-6)
-            n_lambda_cv = i
+    for (j in 1:length(lambda_list_cv)) {
+        if (abs(lambda_list_cv[[j]] / lambda_cv - 1.0) < 1.0e-6)
+            n_lambda_cv = j
     }
     beta_hat_cv <- coef_cv[n_lambda_cv, 2:dim(coef_cv)[[2]]]
     

@@ -2,7 +2,7 @@
 
 This repository contains a function to estimate an adjacency matrix, pruned by SaENET.
 
-If you use functions in this repository, install R and the [miselect](https://cran.r-project.org/web/packages/miselect/index.html) package and set the path to Rscript.
+If you use functions in this repository, install R and [miselect](https://cran.r-project.org/web/packages/miselect/index.html) package, [mice](https://cran.r-project.org/web/packages/mice/index.html) package and set the path to Rscript.
 
 ## References
 
