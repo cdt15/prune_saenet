@@ -2,7 +2,7 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from prune_saenet import impute_by_mice
+from pruning_missing_data import impute_by_mice
 
 import numpy as np
 import pytest
