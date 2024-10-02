@@ -2,7 +2,7 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from prune_saenet import estimate_adj_matrix_for_stacked_imputed_datasets
+from pruning_missing_data import estimate_adj_matrix_for_stacked_imputed_datasets
 
 import numpy as np
 import pytest

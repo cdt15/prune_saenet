@@ -1,4 +1,4 @@
-# prune_saenet
+# pruning_missing_data
 
 This repository contains a function to estimate an adjacency matrix, pruned by SaENET.
 
