@@ -4,6 +4,116 @@ if (!require(miselect)) {
 
 library(miselect)
 
+cv.saenet_modified <- function(x, y, pf, adWeight, weights, family = c("gaussian", "binomial"),
+                      alpha = 1, nlambda = 100, lambda.min.ratio =
+                        ifelse(isTRUE(all.equal(adWeight, rep(1, p))), 1e-3, 1e-6),
+                      lambda = NULL, nfolds = 5, foldid = NULL, maxit = 1000,
+                      eps = 1e-5)
+{
+  call <- match.call()
+  
+  if (!is.list(x))
+    stop("'x' should be a list of numeric matrices.")
+  if (any(sapply(x, function(.x) !is.matrix(.x) || !is.numeric(.x))))
+    stop("Every 'x' should be a numeric matrix.")
+  
+  dim <- dim(x[[1]])
+  n <- dim[1]
+  p <- dim[2]
+  m <- length(x)
+  
+  if (!is.numeric(nfolds) || length(nfolds) > 1)
+    stop("'nfolds' should a be single number.")
+  
+  if (!is.null(foldid))
+    if (!is.numeric(foldid) || length(foldid) != length(y[[1]]))
+      stop("'nfolds' should a be single number.")
+  
+  fit <- saenet(x, y, pf, adWeight, weights, family, alpha, nlambda,
+                lambda.min.ratio, lambda, maxit, eps)
+  
+  X <- do.call("rbind", x)
+  Y <- do.call("c", y)
+  
+  weights <- rep(weights / m , m)
+  
+  if (!is.null(foldid)) {
+    if (!is.numeric(foldid) || !is.vector(foldid) || length(foldid) != n)
+      stop("'foldid' must be length n numeric vector.")
+    nfolds <- max(foldid)
+  } else {
+    r     <- n %% nfolds
+    q     <- (n - r) / nfolds
+    if(r == 0) {
+      foldid = rep(seq(nfolds), q)
+    } else {
+      foldid = c(rep(seq(nfolds), q), seq(r))
+    }
+    foldid <- sample(foldid, n)
+    foldid <- rep(foldid, m)
+  }
+  if (nfolds < 3)
+    stop("'nfolds' must be bigger than 3.")
+  
+  lambda  <- fit$lambda
+  nlambda <- length(lambda)
+  X.scaled <- scale(X, scale = apply(X, 2, function(.X) stats::sd(.X) * sqrt(m)))
+  
+  cvm  <- array(0, c(nlambda, length(alpha), nfolds))
+  cvse <- matrix(nlambda, length(alpha))
+  for (j in seq(nfolds)) {
+    Y.train <- Y[foldid != j]
+    X.train <- subset_scaled_matrix(X.scaled, foldid != j)
+    w.train <- weights[foldid != j]
+    
+    X.test  <- X[foldid == j, , drop = F]
+    Y.test  <- Y[foldid == j]
+    w.test <- weights[foldid == j]
+    
+    cv.fit <- switch(match.arg(family),
+                     gaussian = fit.saenet.gaussian(X.train, Y.train, n, p, m, w.train,
+                                                    nlambda, lambda, alpha, pf, adWeight,
+                                                    maxit, eps),
+                     binomial = fit.saenet.binomial(X.train, Y.train, n, p, m, w.train,
+                                                    nlambda, lambda, alpha, pf, adWeight,
+                                                    maxit, eps)
+    )
+    
+    cvm[,, j] <- cv.saenet.err(cv.fit, X.test, Y.test, w.test, m)
+  }
+  
+  cvse <- apply(cvm, c(1, 2), stats::sd) / sqrt(nfolds)
+  cvm  <- apply(cvm, c(1, 2), mean)
+  
+  min.id = which(cvm == min(cvm), arr.ind = TRUE)
+  se = cvse[min.id[1,1], min.id[1,2]] # modified
+  range = min(cvm) + se
+  
+  all.id = which(cvm < range, arr.ind = TRUE)
+  lambda.seq = lambda[all.id[, 1]]
+  alpha.seq = alpha[all.id[, 2]]
+  L1 = lambda.seq * alpha.seq
+  L1.max.id = which(L1 == max(L1))
+  lambda.1se.id = all.id[L1.max.id, 1]
+  alpha.1se.id = all.id[L1.max.id, 2]
+  lambda.1se = lambda[lambda.1se.id]
+  alpha.1se = alpha[alpha.1se.id]
+  i.min    <- which.min(apply(cvm, 1, min))
+  j.min    <- which.min(apply(cvm, 2, min))
+  
+  lambda.min <- fit$lambda[i.min]
+  alpha.min <- fit$alpha[j.min]
+  
+  structure(list(call = call, lambda = fit$lambda, alpha = alpha, cvm = cvm,
+                 cvse = cvse, saenet.fit = fit, 
+                 lambda.min = lambda.min,
+                 alpha.min = alpha.min, 
+                 lambda.1se = lambda.1se, alpha.1se =
+                 alpha.1se, df = fit$df), class = "cv.saenet")
+}
+
+environment(cv.saenet_modified) <- asNamespace("miselect")
+
 # command args
 temp_dir <- NULL
 seed <- NULL
@@ -104,7 +214,7 @@ for (i in 2:dim(causal_order)[1]) {
     adWeight_cv <- rep(1, length(predictors))
     
     fit <- saenet(x, y, pf, adWeight_cv, weights, family=family)
-    CV <- cv.saenet(x, y, pf, adWeight_cv, weights, lambda=fit$lambda, family=family)
+    CV <- cv.saenet_modified(x, y, pf, adWeight_cv, weights, lambda=fit$lambda, family=family)
     coef_cv <- fit$coef[, 1, ]
 
     lambda_list_cv <- fit$lambda
@@ -129,7 +239,7 @@ for (i in 2:dim(causal_order)[1]) {
     adWeight_cv <- abs_beta_hat_cv ** (-gamma)
     
     fit <- saenet(x, y, pf, adWeight_cv, weights, family=family)
-    CV <- cv.saenet(x, y, pf, adWeight_cv, weights, lambda=fit$lambda, family=family)
+    CV <- cv.saenet_modified(x, y, pf, adWeight_cv, weights, lambda=fit$lambda, family=family)
     
     lambda_list_cv <- fit$lambda
     lambda_cv <- CV[[key]]
